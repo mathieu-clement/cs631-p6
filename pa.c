@@ -41,23 +41,56 @@ int main(int argc, char* argv[])
     argv++;
 
     int nb_pipes = count_pipes(argc, argv);
+    int nb_commands = nb_pipes + 1;
     printf("There are %d pipe(s).\n", nb_pipes);
-    
-    printf("Commands:\n");
-    char** command;
+
+    // char** command;
     int* start = (int*) malloc(sizeof(int));
-    while ( (command = get_next_command(start, argc, argv)) ) {
-        printf("%s\n", command[0]);
-        int i = 1;
-        while (command[i]) {
-            printf("   %s\n", command[i]);
-            i++;
+    // while ( (command = get_next_command(start, argc, argv)) ) {
+    //     printf("%s\n", command[0]);
+    //     int i = 1;
+    //     while (command[i]) {
+    //         printf("   %s\n", command[i]);
+    //         i++;
+    //     }
+    //     execvp(command[0], command);
+    // }
+
+    char** command0 = get_next_command(start, argc, argv);
+    char** command1 = get_next_command(start, argc, argv);
+
+    int pipes[2];
+    if (pipe(pipes) < 0) {
+        fprintf(stderr, "Could not create pipe.\n");
+    }
+
+    pid_t child_id = fork();
+    if (child_id < 0) {
+        fprintf(stderr, "Could not fork.\n");
+    } else if (child_id == 0) {
+        // we are in the child
+        dup2(pipes[0], 0); // redirect stdin
+        close(pipes[0]); 
+        close(pipes[1]); 
+        execvp(command1[0], command1);
+        fprintf(stderr, "Could not execute command (child).\n");
+    } else {
+        // we are in the parent
+        child_id = fork();
+        if (child_id == 0) {
+            dup2(pipes[1], 1);
+            close(pipes[0]); 
+            close(pipes[1]); 
+            execvp(command0[0], command0);
+        } else {
+            close(pipes[0]);
+            close(pipes[1]);
+            waitpid(child_id, NULL, 0);
         }
     }
 
     exit(0);
 
-	pid_t id;
 	int fd;
 
 	if ((fd = open("out", O_CREAT | O_WRONLY, 0644)) < 0) {
@@ -65,7 +98,7 @@ int main(int argc, char* argv[])
 			exit(1);
 	}
 	
-	id = fork();
+	pid_t id = fork();
 
 	if (id == 0) {
 			/* we are in the child */
