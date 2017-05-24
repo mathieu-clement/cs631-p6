@@ -43,51 +43,50 @@ int main(int argc, char* argv[])
     int nb_pipes = count_pipes(argc, argv);
     int nb_commands = nb_pipes + 1;
     printf("There are %d pipe(s).\n", nb_pipes);
+    
+    int pipes01[2];
+    pipe(pipes01);
 
-    // char** command;
+    int pipes12[2];
+    pipe(pipes12);
+
+    // stdin --> (pipes01[0] pipes01[1]) -> (pipes12[0] pipes12[1]) -> stdout
+
+    char** command0;
+    char** command1;
+    char** command2;
     int* start = (int*) malloc(sizeof(int));
-    // while ( (command = get_next_command(start, argc, argv)) ) {
-    //     printf("%s\n", command[0]);
-    //     int i = 1;
-    //     while (command[i]) {
-    //         printf("   %s\n", command[i]);
-    //         i++;
-    //     }
-    //     execvp(command[0], command);
-    // }
+    
+    command0 = get_next_command(start, argc, argv);
+    command1 = get_next_command(start, argc, argv);
+    command2 = get_next_command(start, argc, argv);
 
-    char** command0 = get_next_command(start, argc, argv);
-    char** command1 = get_next_command(start, argc, argv);
-
-    int pipes[2];
-    if (pipe(pipes) < 0) {
-        fprintf(stderr, "Could not create pipe.\n");
-    }
-
-    pid_t child_id = fork();
-    if (child_id < 0) {
-        fprintf(stderr, "Could not fork.\n");
-    } else if (child_id == 0) {
-        // we are in the child
-        dup2(pipes[0], 0); // redirect stdin
-        close(pipes[0]); 
-        close(pipes[1]); 
-        execvp(command1[0], command1);
-        fprintf(stderr, "Could not execute command (child).\n");
+    pid_t pid = fork();
+    if (pid == 0) {
+        dup2(pipes01[1], 1);
+        execvp(*command0, command0);
+        exit(1);
     } else {
-        // we are in the parent
-        child_id = fork();
-        if (child_id == 0) {
-            dup2(pipes[1], 1);
-            close(pipes[0]); 
-            close(pipes[1]); 
-            execvp(command0[0], command0);
-        } else {
-            close(pipes[0]);
-            close(pipes[1]);
-            wait(NULL);
-        }
+        close(pipes01[1]);
     }
+
+    pid = fork();
+    if (pid == 0) {
+        dup2(pipes01[0], 0);
+        dup2(pipes12[1], 1);
+        execvp(*command1, command1);
+        exit(1);
+    } else {
+        close(pipes12[1]);
+    }
+
+    pid = fork();
+    if (pid == 0) {
+        dup2(pipes12[0], 0);
+        execvp(*command2, command2);
+    }
+
+    wait(NULL);
 
     return 0;
 
