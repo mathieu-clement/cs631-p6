@@ -45,12 +45,16 @@ int main(int argc, char* argv[])
     printf("There are %d pipe(s).\n", nb_pipes);
     
     int pipes01[2];
-    pipe(pipes01);
+    if (pipe(pipes01) < 0) {
+        fprintf(stderr, "Could not create pipe.\n");
+        exit(1);
+    }
 
     int pipes12[2];
-    pipe(pipes12);
-
-    // stdin --> (pipes01[0] pipes01[1]) -> (pipes12[0] pipes12[1]) -> stdout
+    if (pipe(pipes12) < 0) {
+        fprintf(stderr, "Could not create pipe.\n");
+        exit(1);
+    }
 
     char** command0;
     char** command1;
@@ -62,7 +66,10 @@ int main(int argc, char* argv[])
     command2 = get_next_command(start, argc, argv);
 
     pid_t pid = fork();
-    if (pid == 0) {
+    if (pid < 0) {
+        fprintf(stderr, "Could not fork.\n");
+        exit(1);
+    } else if (pid == 0) {
         dup2(pipes01[1], 1);
         execvp(*command0, command0);
         exit(1);
@@ -71,7 +78,10 @@ int main(int argc, char* argv[])
     }
 
     pid = fork();
-    if (pid == 0) {
+    if (pid < 0) {
+        fprintf(stderr, "Could not fork.\n");
+        exit(1);
+    } else if (pid == 0) {
         dup2(pipes01[0], 0);
         dup2(pipes12[1], 1);
         execvp(*command1, command1);
@@ -81,7 +91,10 @@ int main(int argc, char* argv[])
     }
 
     pid = fork();
-    if (pid == 0) {
+    if (pid < 0) {
+        fprintf(stderr, "Could not fork.\n");
+        exit(1);
+    } else if (pid == 0) {
         dup2(pipes12[0], 0);
         execvp(*command2, command2);
     }
