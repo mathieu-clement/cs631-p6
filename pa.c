@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
         } else {
             close(pipes[0]);
             close(pipes[1]);
-            waitpid(child_id, NULL, 0);
+            wait(NULL);
         }
     }
 
