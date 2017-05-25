@@ -45,6 +45,17 @@ void make_pipename(char** result, int no, char** command0, char** command1)
     asprintf(result, "[%d] %s -> %s\n", no, *command0, *command1);
 }
 
+int count_char(char* str, int len, char c)
+{
+    int count = 0;
+    for (int i = 0 ; i < len ; ++i) {
+        if (str[i] == c) {
+            count++;
+        }
+    }
+    return count;
+}
+
 int main(int argc, char* argv[])
 {
     // skip program name
@@ -110,9 +121,29 @@ int main(int argc, char* argv[])
         make_pipename(&pipe_title, 1, command0, command1);
         write_string(logfd, pipe_title);
 
-        close(logfd);
-        dup2(pipes01[0], 0);
+        // dup2(pipes01[0], 0);
         dup2(pipes12[1], 1);
+
+        int buf_size = 16;
+        char buf[buf_size];
+        int total_bytes_read = 0;
+        int nb_bytes_read;
+        int total_lines = 0;
+        while ( (nb_bytes_read = read(pipes01[0], buf, buf_size)) > 0 ) {
+            total_bytes_read += nb_bytes_read;
+            write(1, buf, nb_bytes_read);
+            total_lines += count_char(buf, nb_bytes_read, '\n');
+        }
+
+        char* bytes_str;
+        asprintf(&bytes_str, "%d bytes\n", total_bytes_read);
+        write_string(logfd, bytes_str);
+
+        char* lines_str;
+        asprintf(&lines_str, "%d lines\n", total_lines);
+        write_string(logfd, lines_str);
+
+        close(logfd);
         execvp(*command1, command1);
         exit(1);
     } else {
