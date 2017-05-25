@@ -65,6 +65,38 @@ bool is_ascii(char* str, int len)
     return true;
 }
 
+void analyze(int infd, int outfd, int logfd)
+{
+    int buf_size = 16;
+    char buf[buf_size];
+    int total_bytes_read = 0;
+    int nb_bytes_read;
+    int total_lines = 0;
+    bool ascii = true;
+    while ( (nb_bytes_read = read(infd, buf, buf_size)) > 0 ) {
+        total_bytes_read += nb_bytes_read;
+        write(outfd, buf, nb_bytes_read);
+        total_lines += count_char(buf, nb_bytes_read, '\n');
+        ascii &= is_ascii(buf, nb_bytes_read);
+    }
+
+    char* bytes_str;
+    asprintf(&bytes_str, "%d bytes\n", total_bytes_read);
+    write_string(logfd, bytes_str);
+
+    char* lines_str;
+    asprintf(&lines_str, "%d lines\n", total_lines);
+    write_string(logfd, lines_str);
+
+    char* ascii_data = "ASCII data\n";
+    char* binary_data = "Binary data\n";
+    if (ascii) {
+        write_string(logfd, ascii_data);
+    } else {
+        write_string(logfd, binary_data);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     // skip program name
@@ -119,6 +151,8 @@ int main(int argc, char* argv[])
         close(pipes01[1]);
     }
 
+    wait(NULL);
+
     // Second process
     pid = fork();
     if (pid < 0) {
@@ -133,34 +167,7 @@ int main(int argc, char* argv[])
         dup2(pipes01[0], 0);
         dup2(pipes12[1], 1);
 
-        int buf_size = 16;
-        char buf[buf_size];
-        int total_bytes_read = 0;
-        int nb_bytes_read;
-        int total_lines = 0;
-        bool ascii = true;
-        while ( (nb_bytes_read = read(pipes01[0], buf, buf_size)) > 0 ) {
-            total_bytes_read += nb_bytes_read;
-            write(1, buf, nb_bytes_read);
-            total_lines += count_char(buf, nb_bytes_read, '\n');
-            ascii &= is_ascii(buf, nb_bytes_read);
-        }
-
-        char* bytes_str;
-        asprintf(&bytes_str, "%d bytes\n", total_bytes_read);
-        write_string(logfd, bytes_str);
-
-        char* lines_str;
-        asprintf(&lines_str, "%d lines\n", total_lines);
-        write_string(logfd, lines_str);
-
-        char* ascii_data = "ASCII data\n";
-        char* binary_data = "Binary data\n";
-        if (ascii) {
-            write_string(logfd, ascii_data);
-        } else {
-            write_string(logfd, binary_data);
-        }
+        analyze(pipes01[0], 1, logfd);
 
         close(logfd);
         execvp(*command1, command1);
@@ -169,14 +176,22 @@ int main(int argc, char* argv[])
         close(pipes12[1]);
     }
 
+    wait(NULL);
+
     // Third process
     pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
     } else if (pid == 0) {
-        close(logfd);
+        // [2] sort -> wc -l
+        char* pipe_title;
+        make_pipename(&pipe_title, 2, command1, command2);
+        write_string(logfd, pipe_title);
+
         dup2(pipes12[0], 0);
+        analyze(pipes12[0], 1, logfd);
+        close(logfd);
         execvp(*command2, command2);
     }
 
