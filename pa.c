@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -54,6 +55,14 @@ int count_char(char* str, int len, char c)
         }
     }
     return count;
+}
+
+bool is_ascii(char* str, int len)
+{
+    for (int i = 0 ; i < len ; ++i) {
+        if (str[i] > 127) return false;
+    }
+    return true;
 }
 
 int main(int argc, char* argv[])
@@ -129,10 +138,12 @@ int main(int argc, char* argv[])
         int total_bytes_read = 0;
         int nb_bytes_read;
         int total_lines = 0;
+        bool ascii = true;
         while ( (nb_bytes_read = read(pipes01[0], buf, buf_size)) > 0 ) {
             total_bytes_read += nb_bytes_read;
             write(1, buf, nb_bytes_read);
             total_lines += count_char(buf, nb_bytes_read, '\n');
+            ascii &= is_ascii(buf, nb_bytes_read);
         }
 
         char* bytes_str;
@@ -142,6 +153,14 @@ int main(int argc, char* argv[])
         char* lines_str;
         asprintf(&lines_str, "%d lines\n", total_lines);
         write_string(logfd, lines_str);
+
+        char* ascii_data = "ASCII data\n";
+        char* binary_data = "Binary data\n";
+        if (ascii) {
+            write_string(logfd, ascii_data);
+        } else {
+            write_string(logfd, binary_data);
+        }
 
         close(logfd);
         execvp(*command1, command1);
