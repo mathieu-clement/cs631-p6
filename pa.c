@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+// Returns number of pipelines
 int count_pipes(int argc, char* argv[])
 {
     int count = 0;
@@ -34,6 +35,16 @@ char** get_next_command(int* start, int argc, char* argv[])
     return result;
 }
 
+void write_string(int fd, char* str)
+{
+    write(fd, str, strlen(str));
+}
+
+void make_pipename(char** result, int no, char** command0, char** command1)
+{
+    asprintf(result, "[%d] %s -> %s\n", no, *command0, *command1);
+}
+
 int main(int argc, char* argv[])
 {
     // skip program name
@@ -42,7 +53,16 @@ int main(int argc, char* argv[])
 
     int nb_pipes = count_pipes(argc, argv);
     int nb_commands = nb_pipes + 1;
-    printf("There are %d pipe(s).\n", nb_pipes);
+    if (nb_commands != 3) {
+        fprintf(stderr, "Number of commands should be 3, e.g. pa cmd1 | cmd2 | cmd3\n");
+        exit(1);
+    }
+
+    int logfd;
+    if ( (logfd = open("pa.log", O_CREAT | O_WRONLY | O_TRUNC, 0644)) < 0 ) {
+        fprintf(stderr, "IO Error: pa.log\n");
+        exit(1);
+    }
     
     int pipes01[2];
     if (pipe(pipes01) < 0) {
@@ -65,11 +85,13 @@ int main(int argc, char* argv[])
     command1 = get_next_command(start, argc, argv);
     command2 = get_next_command(start, argc, argv);
 
+    // First process
     pid_t pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
     } else if (pid == 0) {
+        close(logfd);
         dup2(pipes01[1], 1);
         execvp(*command0, command0);
         exit(1);
@@ -77,11 +99,18 @@ int main(int argc, char* argv[])
         close(pipes01[1]);
     }
 
+    // Second process
     pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
     } else if (pid == 0) {
+        // [1] seq -> sort
+        char* pipe_title;
+        make_pipename(&pipe_title, 1, command0, command1);
+        write_string(logfd, pipe_title);
+
+        close(logfd);
         dup2(pipes01[0], 0);
         dup2(pipes12[1], 1);
         execvp(*command1, command1);
@@ -90,16 +119,20 @@ int main(int argc, char* argv[])
         close(pipes12[1]);
     }
 
+    // Third process
     pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
     } else if (pid == 0) {
+        close(logfd);
         dup2(pipes12[0], 0);
         execvp(*command2, command2);
     }
 
     wait(NULL);
+
+    close(logfd);
 
     return 0;
 
