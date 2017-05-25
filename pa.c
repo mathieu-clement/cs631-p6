@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
         make_pipename(&pipe_title, 1, command0, command1);
         write_string(logfd, pipe_title);
 
-        // dup2(pipes01[0], 0);
+        dup2(pipes01[0], 0);
         dup2(pipes12[1], 1);
 
         int buf_size = 16;
