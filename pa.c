@@ -65,20 +65,24 @@ bool is_ascii(char* str, int len)
     return true;
 }
 
-void analyze(int infd, int outfd, int logfd)
+void analyze(int* filedes, int logfd)
 {
+    char cpy_buf[4096];
+
     int buf_size = 16;
     char buf[buf_size];
     int total_bytes_read = 0;
     int nb_bytes_read;
     int total_lines = 0;
     bool ascii = true;
-    while ( (nb_bytes_read = read(infd, buf, buf_size)) > 0 ) {
+    while ( (nb_bytes_read = read(filedes[0], buf, buf_size)) > 0 ) {
+        memcpy(cpy_buf, buf, nb_bytes_read);
         total_bytes_read += nb_bytes_read;
-        write(outfd, buf, nb_bytes_read);
         total_lines += count_char(buf, nb_bytes_read, '\n');
         ascii &= is_ascii(buf, nb_bytes_read);
     }
+
+    write(filedes[1], cpy_buf, total_bytes_read);
 
     char* bytes_str;
     asprintf(&bytes_str, "%d bytes\n", total_bytes_read);
@@ -116,14 +120,14 @@ int main(int argc, char* argv[])
         exit(1);
     }
     
-    int pipes01[2];
-    if (pipe(pipes01) < 0) {
+    int pfd1[2];
+    if (pipe(pfd1) < 0) {
         fprintf(stderr, "Could not create pipe.\n");
         exit(1);
     }
 
-    int pipes12[2];
-    if (pipe(pipes12) < 0) {
+    int pfd2[2];
+    if (pipe(pfd2) < 0) {
         fprintf(stderr, "Could not create pipe.\n");
         exit(1);
     }
@@ -143,12 +147,15 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Could not fork.\n");
         exit(1);
     } else if (pid == 0) {
+        close(pfd1[0]);
+        close(pfd2[0]);
+        close(pfd2[1]);
         close(logfd);
-        dup2(pipes01[1], 1);
+        dup2(pfd1[1], 1);
         execvp(*command0, command0);
         exit(1);
     } else {
-        close(pipes01[1]);
+        close(pfd1[1]);
     }
 
     wait(NULL);
@@ -159,21 +166,24 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Could not fork.\n");
         exit(1);
     } else if (pid == 0) {
+        //close(pfd1[1]);
+        close(pfd2[0]);
+
         // [1] seq -> sort
         char* pipe_title;
         make_pipename(&pipe_title, 1, command0, command1);
         write_string(logfd, pipe_title);
 
-        dup2(pipes01[0], 0);
-        dup2(pipes12[1], 1);
+        dup2(pfd1[0], 0);
+        dup2(pfd2[1], 1);
 
-        analyze(pipes01[0], 1, logfd);
+        //analyze(pfd1, logfd);
 
         close(logfd);
         execvp(*command1, command1);
         exit(1);
     } else {
-        close(pipes12[1]);
+        close(pfd2[1]);
     }
 
     wait(NULL);
@@ -189,8 +199,8 @@ int main(int argc, char* argv[])
         make_pipename(&pipe_title, 2, command1, command2);
         write_string(logfd, pipe_title);
 
-        dup2(pipes12[0], 0);
-        analyze(pipes12[0], 1, logfd);
+        dup2(pfd2[0], 0);
+        //analyze(pfd2, logfd);
         close(logfd);
         execvp(*command2, command2);
     }
