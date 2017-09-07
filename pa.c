@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
         dup2(pfd1[0], 0);
         dup2(pfd2[1], 1);
 
-        analyze(pfd1, logfd);
+        if (getenv("ANALYZE")) { analyze(pfd1, logfd); }
 
         close(logfd);
         execvp(*command1, command1);
@@ -193,7 +193,7 @@ int main(int argc, char* argv[])
         write_string(logfd, pipe_title);
 
         dup2(pfd2[0], 0);
-        analyze(pfd2, logfd);
+        if (getenv("ANALYZE")) { analyze(pfd2, logfd); }
         close(logfd);
         execvp(*command2, command2);
     }
