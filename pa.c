@@ -153,6 +153,10 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
+    // [1] seq -> sort
+    char* pipe_title;
+    make_pipename(&pipe_title, 1, command0, command1);
+    write_string(log_fd, pipe_title);
     analyze(fds1[0], fds2[1], log_fd);
     close(fds2[1]); 
 
@@ -187,6 +191,10 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
+    // [2] sort -> wc
+    char* pipe_title2;
+    make_pipename(&pipe_title2, 2, command1, command2);
+    write_string(log_fd, pipe_title2);
     analyze(fds3[0], fds4[1], log_fd);
     close(fds4[1]);
 
