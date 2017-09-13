@@ -65,7 +65,7 @@ bool is_ascii(char* str, int len)
     return true;
 }
 
-void analyze(int* filedes, int logfd)
+void analyze(int read_fd, int write_fd, int log_fd)
 {
     int buf_size = 16;
     char buf[buf_size];
@@ -73,26 +73,27 @@ void analyze(int* filedes, int logfd)
     int nb_bytes_read;
     int total_lines = 0;
     bool ascii = true;
-    while ( (nb_bytes_read = read(filedes[0], buf, buf_size)) > 0 ) {
+    while ( (nb_bytes_read = read(read_fd, buf, buf_size)) > 0 ) {
         total_bytes_read += nb_bytes_read;
         total_lines += count_char(buf, nb_bytes_read, '\n');
         ascii &= is_ascii(buf, nb_bytes_read);
+        write(write_fd, buf, nb_bytes_read);
     }
 
     char* bytes_str;
     asprintf(&bytes_str, "%d bytes\n", total_bytes_read);
-    write_string(logfd, bytes_str);
+    write_string(log_fd, bytes_str);
 
     char* lines_str;
     asprintf(&lines_str, "%d lines\n", total_lines);
-    write_string(logfd, lines_str);
+    write_string(log_fd, lines_str);
 
     char* ascii_data = "ASCII data\n";
     char* binary_data = "Binary data\n";
     if (ascii) {
-        write_string(logfd, ascii_data);
+        write_string(log_fd, ascii_data);
     } else {
-        write_string(logfd, binary_data);
+        write_string(log_fd, binary_data);
     }
 }
 
@@ -109,8 +110,8 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    int logfd;
-    if ( (logfd = open("pa.log", O_CREAT | O_WRONLY | O_TRUNC, 0644)) < 0 ) {
+    int log_fd;
+    if ( (log_fd = open("pa.log", O_CREAT | O_WRONLY | O_TRUNC, 0644)) < 0 ) {
         fprintf(stderr, "IO Error: pa.log\n");
         exit(1);
     }
@@ -125,8 +126,8 @@ int main(int argc, char* argv[])
     command2 = get_next_command(start, argc, argv);
 
     // First process
-    int pfd1[2];
-    if (pipe(pfd1) < 0) {
+    int fds1[2];
+    if (pipe(fds1) < 0) {
         fprintf(stderr, "Could not create pipe.\n");
         exit(1);
     }
@@ -135,72 +136,77 @@ int main(int argc, char* argv[])
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
-    } else if (pid == 0) {
-        close(pfd1[0]);
-        dup2(pfd1[1], 1);
+    } else if (pid == 0) { // child
+        close(fds1[0]);
+        dup2(fds1[1], 1);
         execvp(*command0, command0);
         exit(1);
-    } else {
-        close(pfd1[1]);
+    } else { // parent
+        close(fds1[1]);
     }
 
-    wait(NULL);
+    waitpid(pid, NULL, 0);
 
-    // Second process
-    int pfd2[2];
-    if (pipe(pfd2) < 0) {
+    int fds2[2];
+    if (pipe(fds2) < 0) {
         fprintf(stderr, "Could not create pipe.\n");
         exit(1);
     }
 
+    analyze(fds1[0], fds2[1], log_fd);
+    close(fds2[1]); 
+
+    int fds3[2];
+    if (pipe(fds3) < 0) {
+        fprintf(stderr, "Could not create pipe.\n");
+        exit(1);
+    }
+
+    // Second process
     pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
-    } else if (pid == 0) {
-        close(pfd1[1]);
-        close(pfd2[0]);
-
-        // [1] seq -> sort
-        char* pipe_title;
-        make_pipename(&pipe_title, 1, command0, command1);
-        write_string(logfd, pipe_title);
-
-        dup2(pfd1[0], 0);
-        dup2(pfd2[1], 1);
-
-        if (getenv("ANALYZE")) { analyze(pfd1, logfd); }
-
-        close(logfd);
+    } else if (pid == 0) { // child
+        close(fds2[1]);
+        close(fds3[0]);
+        dup2(fds2[0], 0);
+        dup2(fds3[1], 1);
         execvp(*command1, command1);
         exit(1);
-    } else {
-        close(pfd1[0]);
-        close(pfd2[1]);
+    } else { // parent
+        close(fds2[0]);
+        close(fds3[1]);
     }
 
-    wait(NULL);
+    waitpid(pid, NULL, 0);
+
+    int fds4[2];
+    if (pipe(fds4) < 0) {
+        fprintf(stderr, "Could not create pipe.\n");
+        exit(1);
+    }
+
+    analyze(fds3[0], fds4[1], log_fd);
+    close(fds4[1]);
 
     // Third process
     pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Could not fork.\n");
         exit(1);
-    } else if (pid == 0) {
-        // [2] sort -> wc -l
-        char* pipe_title;
-        make_pipename(&pipe_title, 2, command1, command2);
-        write_string(logfd, pipe_title);
-
-        dup2(pfd2[0], 0);
-        if (getenv("ANALYZE")) { analyze(pfd2, logfd); }
-        close(logfd);
+    } else if (pid == 0) { // child
+        close(fds4[1]);
+        dup2(fds4[0], 0);
         execvp(*command2, command2);
+        exit(1);
+    } else { // parent 
+        close(fds4[0]);
     }
 
-    wait(NULL);
+    waitpid(pid, NULL, 0);
 
-    close(logfd);
+    close(log_fd);
 
     return 0;
 
